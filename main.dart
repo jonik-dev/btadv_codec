@@ -2,13 +2,14 @@ import "dart:convert";
 
 import 'btadv_packet.dart';
 import 'dev_functions.dart';
+import 'received_packets.dart';
 
 void main() {
-  for (var i = 0; i < 5; i++) {
+  print('-------------');
+  for (final base64Encoded in receivedPackets) {
+    final data = base64.decode(base64Encoded);
+    final packet = BTAdvPacket.from(data);
+    print(packet);
     br();
   }
-
-  final data = base64.decode('F9Wwqtrkkn+RCtoAiQ==');
-  final packet = BTAdvPacket.from(data);
-  print(packet);
 }
