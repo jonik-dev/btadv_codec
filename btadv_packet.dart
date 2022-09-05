@@ -5,7 +5,7 @@ import 'package:blowfish_ecb/blowfish_ecb.dart';
 
 import 'util.dart';
 
-const blowfishKey = 'HS_APPLICATION';
+const blowfishKey = 'HS_APPL';
 final blowfish = BlowfishECB(Uint8List.fromList(utf8.encode(blowfishKey)));
 
 num mod = pow(10.0, 6);
