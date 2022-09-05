@@ -78,7 +78,7 @@ class BTAdvPacket {
 
       var longitude = longitudeReference;
       longitude |= longitude0 << 2;
-      longitude |= (longitude1 << 6);
+      longitude |= longitude1 << 6;
 
       return longitude / mod;
     }();
@@ -106,15 +106,15 @@ class BTAdvPacket {
       return uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
     }();
 
-    final applicationIndex = (decryptedData.getUint8(0) & _applicationMask) >> 1;
-    final directionIndex = (decryptedData.getUint8(2) & _directionMask) >> 6;
+    final applicationIndex = decryptedData.getUint8(0) >> 1 & _applicationMask;
+    final directionIndex = decryptedData.getUint8(2) >> 6 & _directionMask;
 
     return BTAdvPacket(
       userId: userId,
       latitude: latitude,
       longitude: longitude,
-      battery: (decryptedData.getUint8(0) & _batteryMask) >> 4, // shiftaus ensin, and sitten
-      gpsFix: (decryptedData.getUint8(0) & _gpsFixMask) >> 3 == 1,
+      battery: decryptedData.getUint8(0) >> 4 & _batteryMask,
+      gpsFix: decryptedData.getUint8(0) >> 3 & _gpsFixMask == 1,
       application: enumFromIndex<ApplicationType?>(applicationIndex, ApplicationType.values, null),
       safetyEnabled: decryptedData.getUint8(0) & _safetyEnabledMask == 1,
       messageNumber: decryptedData.getUint8(1),
@@ -122,7 +122,7 @@ class BTAdvPacket {
       speed: speed,
       barksLastMin: decryptedData.getUint8(3),
       barking: decryptedData.getUint8(4) >> 7 == 1,
-      moving: (decryptedData.getUint8(4) & _movingMask) >> 6 == 1,
+      moving: decryptedData.getUint8(4) >> 6 & _movingMask == 1,
       barksLast10Sec: decryptedData.getUint8(4) & _barksLast10SecMask,
     );
   }
