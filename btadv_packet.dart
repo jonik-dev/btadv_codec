@@ -54,15 +54,13 @@ class BTAdvPacket {
   final int barksLast10Sec;
 
   factory BTAdvPacket.from(List<int> data) {
-    final plainData = ByteData.view(Uint8List.fromList(data.getRange(0, 5).toList()).buffer);
-
-    final encryptedData = data.getRange(5, 13).toList();
-    final decryptedData = ByteData.view(Uint8List.fromList(blowfish.decode(encryptedData)).buffer);
-    // TODO: Join plain and decrypted
+    final plainData = data.getRange(0, 5).toList();
+    final decryptedData = blowfish.decode(data.getRange(5, 13).toList());
+    final byteData = ByteData.view(Uint8List.fromList(plainData + decryptedData).buffer);
 
     final latitude = () {
-      final latitude0 = plainData.getUint8(3) >> 4;
-      final latitude1 = plainData.getUint8(2);
+      final latitude0 = byteData.getUint8(3) >> 4;
+      final latitude1 = byteData.getUint8(2);
 
       var latitude = latitudeReference;
       latitude |= latitude0 << 2;
@@ -73,8 +71,8 @@ class BTAdvPacket {
 
     final longitude = () {
       const _longitude0Mask = 0xF; // 1111
-      final longitude0 = (plainData.getUint8(3) & _longitude0Mask);
-      final longitude1 = plainData.getUint8(4);
+      final longitude0 = (byteData.getUint8(3) & _longitude0Mask);
+      final longitude1 = byteData.getUint8(4);
 
       var longitude = longitudeReference;
       longitude |= longitude0 << 2;
@@ -85,7 +83,7 @@ class BTAdvPacket {
 
     final speed = () {
       const _speedMask = 0x1F; // 00011111
-      final speedRaw = decryptedData.getUint8(2) & _speedMask + 2; // 5-0
+      final speedRaw = byteData.getUint8(2) & _speedMask + 2; // 5-0
       // TODO: Latest spec new formula
       return speedRaw + speedRaw / 9;
     }();
@@ -99,31 +97,31 @@ class BTAdvPacket {
     const _barksLast10SecMask = 0x3F; // 00111111
 
     final userId = () {
-      final uid0 = plainData.getUint8(1);
-      final uid1 = plainData.getUint8(0);
-      final uid2 = decryptedData.getUint8(6);
-      final uid3 = decryptedData.getUint8(5);
+      final uid0 = byteData.getUint8(1);
+      final uid1 = byteData.getUint8(0);
+      final uid2 = byteData.getUint8(11);
+      final uid3 = byteData.getUint8(10);
       return uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
     }();
 
-    final applicationIndex = decryptedData.getUint8(0) >> 1 & _applicationMask;
-    final directionIndex = decryptedData.getUint8(2) >> 6 & _directionMask;
+    final applicationIndex = byteData.getUint8(0) >> 1 & _applicationMask;
+    final directionIndex = byteData.getUint8(2) >> 6 & _directionMask;
 
     return BTAdvPacket(
       userId: userId,
       latitude: latitude,
       longitude: longitude,
-      battery: decryptedData.getUint8(0) >> 4 & _batteryMask,
-      gpsFix: decryptedData.getUint8(0) >> 3 & _gpsFixMask == 1,
+      battery: byteData.getUint8(5) >> 4 & _batteryMask,
+      gpsFix: byteData.getUint8(5) >> 3 & _gpsFixMask == 1,
       application: enumFromIndex<ApplicationType?>(applicationIndex, ApplicationType.values, null),
-      safetyEnabled: decryptedData.getUint8(0) & _safetyEnabledMask == 1,
-      messageNumber: decryptedData.getUint8(1),
+      safetyEnabled: byteData.getUint8(5) & _safetyEnabledMask == 1,
+      messageNumber: byteData.getUint8(6),
       direction: enumFromIndex<Direction?>(directionIndex, Direction.values, null),
       speed: speed,
-      barksLastMin: decryptedData.getUint8(3),
-      barking: decryptedData.getUint8(4) >> 7 == 1,
-      moving: decryptedData.getUint8(4) >> 6 & _movingMask == 1,
-      barksLast10Sec: decryptedData.getUint8(4) & _barksLast10SecMask,
+      barksLastMin: byteData.getUint8(8),
+      barking: byteData.getUint8(9) >> 7 == 1,
+      moving: byteData.getUint8(9) >> 6 & _movingMask == 1,
+      barksLast10Sec: byteData.getUint8(9) & _barksLast10SecMask,
     );
   }
 
