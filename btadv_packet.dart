@@ -11,7 +11,7 @@ final blowfish = BlowfishECB(Uint8List.fromList(utf8.encode(blowfishKey)));
 num mod = pow(10.0, 6);
 
 final calculateReferencePoint = (double fraction) {
-  return ((fraction + 0.0000005) * mod).round() >> 12 << 12;
+  return ((fraction + 0.0000005) * mod).floor() >> 14 << 14;
 };
 
 // NOTE: Reference point from https://github.com/mtilvis/TIoCPS_TX/blob/main/src/lenkki.h
@@ -58,15 +58,15 @@ class BTAdvPacket {
 
     final encryptedData = data.getRange(5, 13).toList();
     final decryptedData = ByteData.view(Uint8List.fromList(blowfish.decode(encryptedData)).buffer);
+    // TODO: Join plain and decrypted
 
     final latitude = () {
-      const _latitude0Mask = 0xF0; // 11110000
-      final latitude0 = (plainData.getUint8(3) & _latitude0Mask) >> 4;
+      final latitude0 = plainData.getUint8(3) >> 4;
       final latitude1 = plainData.getUint8(2);
 
       var latitude = latitudeReference;
-      latitude += latitude0;
-      latitude += (latitude1 << 4);
+      latitude |= latitude0 << 2;
+      latitude |= (latitude1 << 6);
 
       return latitude / mod;
     }();
@@ -77,32 +77,32 @@ class BTAdvPacket {
       final longitude1 = plainData.getUint8(4);
 
       var longitude = longitudeReference;
-      longitude += longitude0;
-      longitude += (longitude1 << 4);
+      longitude |= longitude0 << 2;
+      longitude |= (longitude1 << 6);
 
       return longitude / mod;
     }();
 
     final speed = () {
-      const _speedMask = 0x3F; // 00111111 // TODO: Latest spec last 5 bits
-      final speedRaw = decryptedData.getUint8(2) & _speedMask; // 5-0
+      const _speedMask = 0x1F; // 00011111
+      final speedRaw = decryptedData.getUint8(2) & _speedMask + 2; // 5-0
       // TODO: Latest spec new formula
-      return sqrt(speedRaw * 20);
+      return speedRaw + speedRaw / 9;
     }();
 
     const _batteryMask = 0xF0; // 11110000
     const _gpsFixMask = 0x8; // 1000
     const _applicationMask = 0x6; // 0110
     const _safetyEnabledMask = 0x1; // 0001
-    const _directionMask = 0xC0; //11000000 // TODO: Latest spec first 3 bits
+    const _directionMask = 0xE0; //11100000
     const _movingMask = 0x40; // 01000000
     const _barksLast10SecMask = 0x3F; // 00111111
 
     final userId = () {
       final uid0 = plainData.getUint8(1);
       final uid1 = plainData.getUint8(0);
-      final uid2 = decryptedData.getUint8(7);
-      final uid3 = decryptedData.getUint8(6);
+      final uid2 = decryptedData.getUint8(6);
+      final uid3 = decryptedData.getUint8(5);
       return uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
     }();
 
@@ -113,7 +113,7 @@ class BTAdvPacket {
       userId: userId,
       latitude: latitude,
       longitude: longitude,
-      battery: (decryptedData.getUint8(0) & _batteryMask) >> 4,
+      battery: (decryptedData.getUint8(0) & _batteryMask) >> 4, // shiftaus ensin, and sitten
       gpsFix: (decryptedData.getUint8(0) & _gpsFixMask) >> 3 == 1,
       application: enumFromIndex<ApplicationType?>(applicationIndex, ApplicationType.values, null),
       safetyEnabled: decryptedData.getUint8(0) & _safetyEnabledMask == 1,

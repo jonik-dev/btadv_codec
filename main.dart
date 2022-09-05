@@ -8,7 +8,7 @@ void main() {
     br();
   }
 
-  final data = base64.decode('hA20XM1+5le89+RUKQ==');
+  final data = base64.decode('F9Wwqtrkkn+RCtoAiQ==');
   final packet = BTAdvPacket.from(data);
   print(packet);
 }
