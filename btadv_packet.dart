@@ -10,13 +10,17 @@ final blowfish = BlowfishECB(Uint8List.fromList(utf8.encode(blowfishKey)));
 
 num mod = pow(10.0, 6);
 
-final calculateReferencePoint = (double fraction) {
+int calculateReferencePoint(double fraction) {
   return ((fraction + 0.0000005) * mod).floor() >> 14 << 14;
-};
+}
 
 // NOTE: Reference point from https://github.com/mtilvis/TIoCPS_TX/blob/main/src/lenkki.h
 final latitudeReference = calculateReferencePoint(64.940111234);
 final longitudeReference = calculateReferencePoint(25.388841234);
+
+enum ApplicationType { huntingSecurity, dog }
+
+enum Direction { north, northEast, east, southEast, south, southWest, west, northWest }
 
 class BTAdvPacket {
   BTAdvPacket(
@@ -39,10 +43,10 @@ class BTAdvPacket {
   final double longitude;
   final int battery;
   final bool gpsFix;
-  final int application;
+  final ApplicationType? application;
   final bool safetyEnabled;
   final int messageNumber;
-  final int direction;
+  final Direction? direction;
   final double speed;
   final int barksLastMin;
   final bool barking;
@@ -51,7 +55,13 @@ class BTAdvPacket {
 
   factory BTAdvPacket.from(List<int> data) {
     final plainData = data.getRange(0, 5).toList();
-    final decryptedData = blowfish.decode(data.getRange(5, 13).toList());
+    final encryptedData = data.getRange(5, 13).toList();
+    // NOTE: There is bug in Polar-demo byte order.
+    final tmp = encryptedData[5];
+    encryptedData[5] = encryptedData[6];
+    encryptedData[6] = tmp;
+    // NOTE: End of Polar fix
+    final decryptedData = blowfish.decode(encryptedData);
     final byteData = ByteData.view(Uint8List.fromList(plainData + decryptedData).buffer);
 
     final latitude = () {
@@ -66,8 +76,8 @@ class BTAdvPacket {
     }();
 
     final longitude = () {
-      const _longitude0Mask = 0xF; // 1111
-      final longitude0 = (byteData.getUint8(3) & _longitude0Mask);
+      const longitude0Mask = 0xF; // 1111
+      final longitude0 = (byteData.getUint8(3) & longitude0Mask);
       final longitude1 = byteData.getUint8(4);
 
       var longitude = longitudeReference;
@@ -78,19 +88,18 @@ class BTAdvPacket {
     }();
 
     final speed = () {
-      const _speedMask = 0x1F; // 00011111
-      final speedRaw = byteData.getUint8(2) & _speedMask + 2; // 5-0
-      // TODO: Latest spec new formula
+      const speedMask = 0x1F; // 00011111
+      final speedRaw = (byteData.getUint8(5) & speedMask) + 2;
       return speedRaw + speedRaw / 9;
     }();
 
-    const _batteryMask = 0xF0; // 11110000
-    const _gpsFixMask = 0x8; // 1000
-    const _applicationMask = 0x6; // 0110
-    const _safetyEnabledMask = 0x1; // 0001
-    const _directionMask = 0xE0; //11100000
-    const _movingMask = 0x40; // 01000000
-    const _barksLast10SecMask = 0x3F; // 00111111
+    const batteryMask = 0xF; // 1111
+    const gpsFixMask = 0x1; // 0001
+    const applicationMask = 0x3; // 11
+    const safetyEnabledMask = 0x1; // 0001
+    const directionMask = 0x7; // 0111
+    const movingMask = 0x1; // 0001
+    const barksLast10SecMask = 0x3F; // 00111111
 
     final userId = () {
       final uid0 = byteData.getUint8(1);
@@ -100,24 +109,24 @@ class BTAdvPacket {
       return uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
     }();
 
-    final applicationIndex = byteData.getUint8(0) >> 1 & _applicationMask;
-    final directionIndex = byteData.getUint8(2) >> 6 & _directionMask;
+    final applicationIndex = byteData.getUint8(5) >> 1 & applicationMask;
+    final directionIndex = byteData.getUint8(7) >> 6 & directionMask;
 
     return BTAdvPacket(
       userId: userId,
       latitude: latitude,
       longitude: longitude,
-      battery: byteData.getUint8(5) >> 4 & _batteryMask,
-      gpsFix: byteData.getUint8(5) >> 3 & _gpsFixMask == 1,
-      application: applicationIndex,
-      safetyEnabled: byteData.getUint8(5) & _safetyEnabledMask == 1,
+      battery: byteData.getUint8(5) >> 4 & batteryMask,
+      gpsFix: byteData.getUint8(5) >> 3 & gpsFixMask == 1,
+      application: enumFromIndex<ApplicationType?>(applicationIndex, ApplicationType.values, null),
+      safetyEnabled: byteData.getUint8(5) & safetyEnabledMask == 1,
       messageNumber: byteData.getUint8(6),
-      direction: directionIndex,
+      direction: enumFromIndex<Direction?>(directionIndex, Direction.values, null),
       speed: speed,
       barksLastMin: byteData.getUint8(8),
       barking: byteData.getUint8(9) >> 7 == 1,
-      moving: byteData.getUint8(9) >> 6 & _movingMask == 1,
-      barksLast10Sec: byteData.getUint8(9) & _barksLast10SecMask,
+      moving: byteData.getUint8(9) >> 6 & movingMask == 1,
+      barksLast10Sec: byteData.getUint8(9) & barksLast10SecMask,
     );
   }
 
