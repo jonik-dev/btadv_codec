@@ -18,10 +18,6 @@ final calculateReferencePoint = (double fraction) {
 final latitudeReference = calculateReferencePoint(64.940111234);
 final longitudeReference = calculateReferencePoint(25.388841234);
 
-enum ApplicationType { huntingSecurity, dog }
-
-enum Direction { north, northEast, east, southEast, south, southWest, west, northWest }
-
 class BTAdvPacket {
   BTAdvPacket(
       {required this.userId,
@@ -43,10 +39,10 @@ class BTAdvPacket {
   final double longitude;
   final int battery;
   final bool gpsFix;
-  final ApplicationType? application;
+  final int application;
   final bool safetyEnabled;
   final int messageNumber;
-  final Direction? direction;
+  final int direction;
   final double speed;
   final int barksLastMin;
   final bool barking;
@@ -113,10 +109,10 @@ class BTAdvPacket {
       longitude: longitude,
       battery: byteData.getUint8(5) >> 4 & _batteryMask,
       gpsFix: byteData.getUint8(5) >> 3 & _gpsFixMask == 1,
-      application: enumFromIndex<ApplicationType?>(applicationIndex, ApplicationType.values, null),
+      application: applicationIndex,
       safetyEnabled: byteData.getUint8(5) & _safetyEnabledMask == 1,
       messageNumber: byteData.getUint8(6),
-      direction: enumFromIndex<Direction?>(directionIndex, Direction.values, null),
+      direction: directionIndex,
       speed: speed,
       barksLastMin: byteData.getUint8(8),
       barking: byteData.getUint8(9) >> 7 == 1,
