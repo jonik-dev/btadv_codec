@@ -3,8 +3,6 @@ import 'dart:typed_data';
 import "dart:math";
 import 'package:blowfish_ecb/blowfish_ecb.dart';
 
-import 'util.dart';
-
 const blowfishKey = 'HS_APPL';
 final blowfish = BlowfishECB(Uint8List.fromList(utf8.encode(blowfishKey)));
 
@@ -15,12 +13,8 @@ int calculateReferencePoint(double fraction) {
 }
 
 // NOTE: Reference point from https://github.com/mtilvis/TIoCPS_TX/blob/main/src/lenkki.h
-final latitudeReference = calculateReferencePoint(64.940111234);
-final longitudeReference = calculateReferencePoint(25.388841234);
-
-enum ApplicationType { huntingSecurity, dog }
-
-enum Direction { north, northEast, east, southEast, south, southWest, west, northWest }
+final latitudeReference = calculateReferencePoint(64.94011);
+final longitudeReference = calculateReferencePoint(25.38884);
 
 class BTAdvPacket {
   BTAdvPacket(
@@ -38,31 +32,53 @@ class BTAdvPacket {
       required this.barking,
       required this.moving,
       required this.barksLast10Sec});
+  final DateTime timestamp = DateTime.now();
   final int userId;
   final double latitude;
   final double longitude;
   final int battery;
   final bool gpsFix;
-  final ApplicationType? application;
+  final int application;
   final bool safetyEnabled;
   final int messageNumber;
-  final Direction? direction;
+  final int direction;
   final double speed;
   final int barksLastMin;
   final bool barking;
   final bool moving;
   final int barksLast10Sec;
 
-  factory BTAdvPacket.from(List<int> data) {
+  /// 1111
+  static const batteryMask = 0xF;
+
+  /// 0001
+  static const gpsFixMask = 0x1;
+
+  /// 11
+  static const applicationMask = 0x3;
+
+  /// 0001
+  static const safetyEnabledMask = 0x1;
+
+  /// 11
+  static const messageNumberMask = 0x3;
+
+  /// 0111
+  static const directionMask = 0x7;
+
+  /// 0001
+  static const movingMask = 0x1;
+
+  /// 00111111
+  static const barksLast10SecMask = 0x3F;
+
+  factory BTAdvPacket.fromData(List<int> data) {
     final plainData = data.getRange(0, 5).toList();
     final encryptedData = data.getRange(5, 13).toList();
-    // NOTE: There is bug in Polar-demo byte order.
-    final tmp = encryptedData[5];
-    encryptedData[5] = encryptedData[6];
-    encryptedData[6] = tmp;
-    // NOTE: End of Polar fix
     final decryptedData = blowfish.decode(encryptedData);
     final byteData = ByteData.view(Uint8List.fromList(plainData + decryptedData).buffer);
+
+    final applicationIndex = byteData.getUint8(5) >> 1 & applicationMask;
 
     final latitude = () {
       final latitude0 = byteData.getUint8(3) >> 4;
@@ -93,14 +109,6 @@ class BTAdvPacket {
       return speedRaw + speedRaw / 9;
     }();
 
-    const batteryMask = 0xF; // 1111
-    const gpsFixMask = 0x1; // 0001
-    const applicationMask = 0x3; // 11
-    const safetyEnabledMask = 0x1; // 0001
-    const directionMask = 0x7; // 0111
-    const movingMask = 0x1; // 0001
-    const barksLast10SecMask = 0x3F; // 00111111
-
     final userId = () {
       final uid0 = byteData.getUint8(1);
       final uid1 = byteData.getUint8(0);
@@ -109,7 +117,6 @@ class BTAdvPacket {
       return uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
     }();
 
-    final applicationIndex = byteData.getUint8(5) >> 1 & applicationMask;
     final directionIndex = byteData.getUint8(7) >> 6 & directionMask;
 
     return BTAdvPacket(
@@ -118,10 +125,10 @@ class BTAdvPacket {
       longitude: longitude,
       battery: byteData.getUint8(5) >> 4 & batteryMask,
       gpsFix: byteData.getUint8(5) >> 3 & gpsFixMask == 1,
-      application: enumFromIndex<ApplicationType?>(applicationIndex, ApplicationType.values, null),
+      application: applicationIndex,
       safetyEnabled: byteData.getUint8(5) & safetyEnabledMask == 1,
       messageNumber: byteData.getUint8(6),
-      direction: enumFromIndex<Direction?>(directionIndex, Direction.values, null),
+      direction: directionIndex,
       speed: speed,
       barksLastMin: byteData.getUint8(8),
       barking: byteData.getUint8(9) >> 7 == 1,
@@ -147,6 +154,6 @@ class BTAdvPacket {
       'barking': barking,
       'moving': moving,
       'barksLast10Sec': barksLast10Sec,
-    }.map((key, value) => MapEntry(key, '$key: $value')).values.join('\n');
+    }.map((key, value) => MapEntry(key, '$key: $value')).values.join(', ');
   }
 }
