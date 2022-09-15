@@ -9,12 +9,9 @@ final blowfish = BlowfishECB(Uint8List.fromList(utf8.encode(blowfishKey)));
 num mod = pow(10.0, 6);
 
 int calculateReferencePoint(double fraction) {
-  return ((fraction + 0.0000005) * mod).floor() >> 14 << 14;
+  final rounded = ((fraction + 0.0000005) * mod).floor();
+  return (rounded ~/ 1000000) * 1000000 + ((rounded % 1000000) >> 15 << 15);
 }
-
-// NOTE: Reference point from https://github.com/mtilvis/TIoCPS_TX/blob/main/src/lenkki.h
-final latitudeReference = calculateReferencePoint(64.94011);
-final longitudeReference = calculateReferencePoint(25.38884);
 
 class BTAdvPacket {
   BTAdvPacket(
@@ -24,7 +21,6 @@ class BTAdvPacket {
       required this.battery,
       required this.gpsFix,
       required this.application,
-      required this.safetyEnabled,
       required this.messageNumber,
       required this.direction,
       required this.speed,
@@ -39,7 +35,6 @@ class BTAdvPacket {
   final int battery;
   final bool gpsFix;
   final int application;
-  final bool safetyEnabled;
   final int messageNumber;
   final int direction;
   final double speed;
@@ -57,9 +52,6 @@ class BTAdvPacket {
   /// 11
   static const applicationMask = 0x3;
 
-  /// 0001
-  static const safetyEnabledMask = 0x1;
-
   /// 11
   static const messageNumberMask = 0x3;
 
@@ -72,7 +64,7 @@ class BTAdvPacket {
   /// 00111111
   static const barksLast10SecMask = 0x3F;
 
-  factory BTAdvPacket.fromData(List<int> data) {
+  factory BTAdvPacket.fromData(int latitudeReference, int longitudeReference, List<int> data) {
     final plainData = data.getRange(0, 5).toList();
     final encryptedData = data.getRange(5, 13).toList();
     final decryptedData = blowfish.decode(encryptedData);
@@ -80,53 +72,45 @@ class BTAdvPacket {
 
     final applicationIndex = byteData.getUint8(5) >> 1 & applicationMask;
 
-    final latitude = () {
-      final latitude0 = byteData.getUint8(3) >> 4;
-      final latitude1 = byteData.getUint8(2);
+    final latitude0 = byteData.getUint8(3) >> 4;
+    final latitude1 = byteData.getUint8(2);
 
-      var latitude = latitudeReference;
-      latitude |= latitude0 << 2;
-      latitude |= (latitude1 << 6);
+    num latitude = latitudeReference;
+    latitude += latitude0 << 3;
+    latitude += (latitude1 << 7);
+    latitude = latitude / mod;
 
-      return latitude / mod;
-    }();
+    const longitude0Mask = 0xF; // 1111
+    // NOTE: Must use sum, not OR operator.
+    final longitude0 = (byteData.getUint8(3) & longitude0Mask);
+    final longitude1 = byteData.getUint8(4);
 
-    final longitude = () {
-      const longitude0Mask = 0xF; // 1111
-      final longitude0 = (byteData.getUint8(3) & longitude0Mask);
-      final longitude1 = byteData.getUint8(4);
+    num longitude = longitudeReference;
+    // NOTE: Must use sum, not OR operator.
+    longitude += longitude0 << 3;
+    longitude += longitude1 << 7;
 
-      var longitude = longitudeReference;
-      longitude |= longitude0 << 2;
-      longitude |= longitude1 << 6;
+    longitude = longitude / mod;
 
-      return longitude / mod;
-    }();
+    const speedMask = 0x1F; // 00011111
+    final speedRaw = (byteData.getUint8(5) & speedMask) + 2;
+    final speed = speedRaw + speedRaw / 9;
 
-    final speed = () {
-      const speedMask = 0x1F; // 00011111
-      final speedRaw = (byteData.getUint8(5) & speedMask) + 2;
-      return speedRaw + speedRaw / 9;
-    }();
-
-    final userId = () {
-      final uid0 = byteData.getUint8(1);
-      final uid1 = byteData.getUint8(0);
-      final uid2 = byteData.getUint8(11);
-      final uid3 = byteData.getUint8(10);
-      return uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
-    }();
+    final uid0 = byteData.getUint8(1);
+    final uid1 = byteData.getUint8(0);
+    final uid2 = byteData.getUint8(11);
+    final uid3 = byteData.getUint8(10);
+    final userId = uid0 + (uid1 << 8) + (uid2 << 16) + (uid3 << 24);
 
     final directionIndex = byteData.getUint8(7) >> 6 & directionMask;
 
     return BTAdvPacket(
       userId: userId,
-      latitude: latitude,
-      longitude: longitude,
+      latitude: latitude.toDouble(),
+      longitude: longitude.toDouble(),
       battery: byteData.getUint8(5) >> 4 & batteryMask,
       gpsFix: byteData.getUint8(5) >> 3 & gpsFixMask == 1,
       application: applicationIndex,
-      safetyEnabled: byteData.getUint8(5) & safetyEnabledMask == 1,
       messageNumber: byteData.getUint8(6),
       direction: directionIndex,
       speed: speed,
@@ -146,7 +130,6 @@ class BTAdvPacket {
       'battery': battery,
       'gpsFix': gpsFix,
       'application': application,
-      'safetyEnabled': safetyEnabled,
       'messageNumber': messageNumber,
       'direction': direction,
       'speed': speed,
